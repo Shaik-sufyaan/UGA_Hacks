@@ -19,9 +19,67 @@ body {
 
 .screen {
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 15px;
-    padding: 2rem;
-    backdrop-filter: blur(10px);
+}
+
+.option {
+    display: block;
+    width: 100%;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.option:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.option.correct {
+    background: rgba(40, 167, 69, 0.7);
+    border-color: #28a745;
+}
+
+.option.incorrect {
+    background: rgba(220, 53, 69, 0.7);
+    border-color: #dc3545;
+}
+
+.option.selected {
+    border-color: #007bff;
+    background: rgba(0, 123, 255, 0.3);
+}
+
+.players-list {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.players-list h3 {
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.players-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.players-list .player-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    font-size: 1rem;
+}
+
+.players-list .player-item:last-child {
+    border-bottom: none;
 }
 
 .hidden {
