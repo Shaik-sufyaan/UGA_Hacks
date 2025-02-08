@@ -25,6 +25,7 @@ class ConnectionManager:
         self.room_players = {}
         self.room_codes = set()
         self.player_ready_states = {}  # Track ready states
+        self.active_games = {}
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
@@ -98,6 +99,59 @@ class ConnectionManager:
                 await self.broadcast(message, room_id)
             except Exception as e:
                 print(f"Error in broadcast_room_update: {str(e)}")
+
+    def start_game(self, room_id: str):
+        """Initialize a new game session"""
+        if room_id not in self.room_players:
+            return None
+
+        players = list(self.room_players[room_id])
+        if len(players) < 2:
+            return None
+
+        # Reset scores and levels for all players
+        for player_id in players:
+            self.player_scores[player_id] = 0
+            self.player_levels[player_id] = 1
+
+        # Initialize game state
+        game_state = {
+            'status': 'active',
+            'current_round': 1,
+            'players': [
+                {
+                    'id': player_id,
+                    'name': self.player_names[player_id],
+                    'score': self.player_scores[player_id],
+                    'level': self.player_levels[player_id]
+                }
+                for player_id in players
+            ],
+            'current_question': self.get_next_question(players[0])  # Start with first player
+        }
+
+        self.active_games[room_id] = game_state
+        return game_state
+
+    def get_next_question(self, player_id: str):
+        """Get the next question for a player"""
+        level = self.player_levels.get(player_id, 1)
+        job_titles = list(QUESTIONS.keys())
+        
+        if job_titles:
+            job_title = job_titles[0]  # For now, use the first job title
+            if job_title in QUESTIONS and level in QUESTIONS[job_title]:
+                questions = QUESTIONS[job_title][level]
+                if questions:
+                    # Pick a random question
+                    question = random.choice(questions)
+                    return {
+                        'question': question['question'],
+                        'options': question['options'],
+                        'correct': question['correct'],
+                        'level': level
+                    }
+        return None
 
 manager = ConnectionManager()
 
@@ -250,6 +304,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             elif message["type"] == "start_game":
                 try:
                     room_id = None
+                    # Find the room this player is in
                     for rid, players in manager.room_players.items():
                         if client_id in players:
                             room_id = rid
@@ -258,17 +313,25 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     if room_id:
                         room_creator = list(manager.room_players[room_id])[0]
                         if client_id == room_creator:
-                            # Check if all non-creator players are ready
+                            # Check if all players are ready
                             non_creator_players = [pid for pid in manager.room_players[room_id] if pid != room_creator]
                             all_ready = all(manager.player_ready_states.get(pid, False) for pid in non_creator_players)
                             
                             if all_ready and len(manager.room_players[room_id]) > 1:
-                                print(f"Starting game in room {room_id}")
-                                # Start the game
-                                await manager.broadcast(json.dumps({
-                                    "type": "game_started",
-                                    "players": [manager.player_names[pid] for pid in manager.room_players[room_id]]
-                                }), room_id)
+                                # Initialize game state
+                                game_state = manager.start_game(room_id)
+                                if game_state:
+                                    print(f"Starting game in room {room_id}")
+                                    # Notify all players
+                                    await manager.broadcast(json.dumps({
+                                        "type": "game_started",
+                                        "game_state": game_state
+                                    }), room_id)
+                                else:
+                                    await websocket.send_json({
+                                        "type": "error",
+                                        "message": "Failed to initialize game state"
+                                    })
                             else:
                                 await websocket.send_json({
                                     "type": "error",
@@ -279,6 +342,56 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     await websocket.send_json({
                         "type": "error",
                         "message": "Failed to start game"
+                    })
+
+            elif message["type"] == "submit_answer":
+                try:
+                    room_id = None
+                    for rid, players in manager.room_players.items():
+                        if client_id in players:
+                            room_id = rid
+                            break
+
+                    if room_id and room_id in manager.active_games:
+                        game_state = manager.active_games[room_id]
+                        current_question = game_state['current_question']
+                        
+                        if current_question and 'answer_index' in message:
+                            is_correct = message['answer_index'] == current_question['correct']
+                            
+                            # Update score
+                            if is_correct:
+                                manager.player_scores[client_id] += current_question['level'] * 10
+                            
+                            # Get next question
+                            next_question = manager.get_next_question(client_id)
+                            
+                            # Update game state
+                            game_state['current_question'] = next_question
+                            game_state['players'] = [
+                                {
+                                    'id': pid,
+                                    'name': manager.player_names[pid],
+                                    'score': manager.player_scores[pid],
+                                    'level': manager.player_levels[pid]
+                                }
+                                for pid in manager.room_players[room_id]
+                            ]
+                            
+                            # Broadcast updated game state
+                            await manager.broadcast(json.dumps({
+                                "type": "game_state_update",
+                                "game_state": game_state,
+                                "answer_result": {
+                                    "correct": is_correct,
+                                    "player_id": client_id
+                                }
+                            }), room_id)
+                except Exception as e:
+                    print(f"Error processing answer: {str(e)}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Failed to process answer"
                     })
 
             elif message["type"] == "get_question":

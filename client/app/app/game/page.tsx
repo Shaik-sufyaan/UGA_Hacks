@@ -15,6 +15,22 @@ type Player = {
   isCreator: boolean
 }
 
+type GameState = {
+  status: string
+  current_round: number
+  players: {
+    id: string
+    name: string
+    score: number
+    level: number
+  }[]
+  current_question?: {
+    question: string
+    options: string[]
+    level: number
+  }
+}
+
 export default function GamePage() {
   const [username, setUsername] = useState('')
   const [roomCode, setRoomCode] = useState('')
@@ -24,6 +40,12 @@ export default function GamePage() {
   const [error, setError] = useState('')
   const [isReady, setIsReady] = useState(false)
   const [clientId, setClientId] = useState('')
+  const [activeGame, setActiveGame] = useState<GameState | null>(null)
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
+  const [lastAnswerResult, setLastAnswerResult] = useState<{
+    correct: boolean
+    player_id: string
+  } | null>(null)
 
   useEffect(() => {
     // Generate a client ID when component mounts
@@ -59,7 +81,6 @@ export default function GamePage() {
         case 'room_update':
           console.log('Room update received:', message.players)
           setPlayers(message.players)
-          // Update local ready state based on server state
           const currentPlayer = message.players.find((p: Player) => p.id === cId)
           if (currentPlayer) {
             setIsReady(currentPlayer.ready)
@@ -72,8 +93,20 @@ export default function GamePage() {
           break
 
         case 'game_started':
-          console.log('Game started!')
+          console.log('Game started with state:', message.game_state)
           setGameState('playing')
+          setActiveGame(message.game_state)
+          setSelectedAnswer(null)
+          setLastAnswerResult(null)
+          break
+
+        case 'game_state_update':
+          console.log('Game state updated:', message.game_state)
+          setActiveGame(message.game_state)
+          if (message.answer_result) {
+            setLastAnswerResult(message.answer_result)
+          }
+          setSelectedAnswer(null)
           break
 
         case 'error':
@@ -167,6 +200,93 @@ export default function GamePage() {
     }
   }
 
+  const submitAnswer = useCallback((answerIndex: number) => {
+    if (ws && ws.readyState === WebSocket.OPEN && activeGame) {
+      console.log('Submitting answer:', answerIndex)
+      ws.send(JSON.stringify({
+        type: 'submit_answer',
+        answer_index: answerIndex
+      }))
+      setSelectedAnswer(answerIndex)
+    }
+  }, [ws, activeGame])
+
+  const renderGame = () => {
+    if (!activeGame) return null
+
+    return (
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Player Scores */}
+          <div className="bg-black/30 p-4 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4 text-white">Players</h2>
+            <div className="space-y-2">
+              {activeGame.players.map((player) => (
+                <div
+                  key={player.id}
+                  className="flex justify-between items-center bg-black/20 p-3 rounded"
+                >
+                  <span className="text-white">
+                    {player.name}
+                    {player.id === clientId && (
+                      <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-1 rounded">
+                        You
+                      </span>
+                    )}
+                  </span>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-400">Score: {player.score}</div>
+                    <div className="text-xs text-gray-500">Level: {player.level}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Current Question */}
+          <div className="bg-black/30 p-4 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4 text-white">Question</h2>
+            {activeGame.current_question ? (
+              <div className="space-y-4">
+                <p className="text-white">{activeGame.current_question.question}</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {activeGame.current_question.options.map((option, index) => (
+                    <Button
+                      key={index}
+                      variant={selectedAnswer === index ? "secondary" : "outline"}
+                      className={`w-full text-left justify-start ${
+                        selectedAnswer === index 
+                          ? 'bg-primary/20 hover:bg-primary/30' 
+                          : 'hover:bg-white/10'
+                      }`}
+                      onClick={() => submitAnswer(index)}
+                      disabled={selectedAnswer !== null}
+                    >
+                      {option}
+                    </Button>
+                  ))}
+                </div>
+                {lastAnswerResult && lastAnswerResult.player_id === clientId && (
+                  <div className={`mt-4 p-3 rounded ${
+                    lastAnswerResult.correct 
+                      ? 'bg-green-500/20 text-green-500' 
+                      : 'bg-red-500/20 text-red-500'
+                  }`}>
+                    {lastAnswerResult.correct ? 'Correct!' : 'Incorrect!'}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-gray-400 text-center">
+                Waiting for next question...
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-black/[0.96] antialiased bg-grid-white/[0.02] relative overflow-hidden">
       {/* Ambient background with moving particles */}
@@ -192,7 +312,7 @@ export default function GamePage() {
           </div>
 
           <div className="container mx-auto px-6 relative z-10">
-            <div className="max-w-md mx-auto">
+            <div className="max-w-4xl mx-auto">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -258,7 +378,7 @@ export default function GamePage() {
                       </div>
                     </div>
                   </>
-                ) : (
+                ) : gameState === 'waiting' ? (
                   <>
                     <h2 className="text-3xl font-bold mb-6 text-center">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
@@ -341,6 +461,8 @@ export default function GamePage() {
                       )}
                     </div>
                   </>
+                ) : (
+                  renderGame()
                 )}
               </motion.div>
             </div>
