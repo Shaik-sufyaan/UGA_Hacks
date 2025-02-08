@@ -44,7 +44,7 @@ export default function Hero() {
             transition={{ duration: 0.5, delay: 0.4 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Link href="/game">
+            <Link href="https://finance-anal-app-7b869ffc19b6.herokuapp.com/static/index.html">
               <Button size="lg" className="bg-purple-600 hover:bg-purple-700 text-white px-8">
                 Start Game
               </Button>
