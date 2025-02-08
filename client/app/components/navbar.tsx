@@ -6,8 +6,33 @@ import { motion } from "framer-motion"
 import Link from "next/link"
 import Image from "next/image"
 import type React from "react"
+import { useEffect } from 'react'
+import { useUser } from '@auth0/nextjs-auth0/client'
 
 export default function Navbar() {
+  const { user, isLoading } = useUser()
+
+  useEffect(() => {
+    // Redirect to finance app if user is authenticated
+    if (user) {
+      window.location.href = 'https://finance-anal-app-7b869ffc19b6.herokuapp.com/static/index.html'
+    }
+  }, [user])
+
+  const handleGetStarted = () => {
+    // Redirect to Auth0 signup page
+    window.location.href = '/api/auth/login?screen_hint=signup'
+  }
+
+  const handleSignIn = () => {
+    // Redirect to Auth0 login page
+    window.location.href = '/api/auth/login'
+  }
+
+  if (isLoading) {
+    return <div>Loading...</div>
+  }
+
   return (
     <motion.nav
       initial={{ y: -100 }}
@@ -32,10 +57,20 @@ export default function Navbar() {
       </div>
 
       <div className="hidden md:flex items-center space-x-4">
-        <Button variant="ghost" className="text-white hover:text-purple-400">
-          Sign In
-        </Button>
-        <Button className="bg-purple-600 hover:bg-purple-700 text-white">Get Started</Button>
+        {!user ? (
+          <>
+            <Button variant="ghost" className="text-white hover:text-purple-400" onClick={handleSignIn}>
+              Sign In
+            </Button>
+            <Button className="bg-purple-600 hover:bg-purple-700 text-white" onClick={handleGetStarted}>
+              Get Started
+            </Button>
+          </>
+        ) : (
+          <Button variant="ghost" className="text-white hover:text-purple-400" onClick={() => window.location.href = '/api/auth/logout'}>
+            Sign Out
+          </Button>
+        )}
       </div>
 
       <Button variant="ghost" size="icon" className="md:hidden text-white">
@@ -53,4 +88,3 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
     </Link>
   )
 }
-
