@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Career Quiz Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div id="welcome-screen" class="screen">
+            <h1>Career Quiz Game</h1>
+            <div class="form-group">
+                <input type="text" id="username" placeholder="Enter your username" required>
+                <select id="job-title">
+                    <option value="software_engineer">Software Engineer</option>
+                    <option value="data_scientist">Data Scientist</option>
+                </select>
+                <input type="text" id="room-code" placeholder="Enter room code" required>
+                <button onclick="joinGame()">Join Game</button>
+            </div>
+        </div>
+
+        <div id="game-screen" class="screen hidden">
+            <div class="game-header">
+                <div class="level">Level: <span id="current-level">1</span></div>
+                <div class="score">Score: <span id="current-score">0</span></div>
+            </div>
+            
+            <div class="players-list">
+                <h3>Players in Room</h3>
+                <ul id="players"></ul>
+            </div>
+
+            <div class="question-container">
+                <h2 id="question-text">Question will appear here</h2>
+                <div id="options-container" class="options-container">
+                    <!-- Options will be dynamically added here -->
+                </div>
+            </div>
+
+            <button id="next-question" onclick="requestQuestion()" class="hidden">Next Question</button>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
