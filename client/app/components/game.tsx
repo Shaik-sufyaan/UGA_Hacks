@@ -6,8 +6,6 @@ import { DollarSign, TrendingUp, CircleDollarSign, LineChart } from "lucide-reac
 
 export default function FinancialGame() {
   const [timeLeft, setTimeLeft] = useState(15)
-  const [currentVerse, setCurrentVerse] = useState(1)
-  const totalVerses = 4
 
   useEffect(() => {
     if (timeLeft > 0) {
@@ -21,8 +19,7 @@ export default function FinancialGame() {
       {/* Header */}
       <div className="w-full max-w-3xl mb-8">
         <h1 className="text-2xl text-center mb-2">
-          Complete the financial terms for <span className="text-emerald-400">Round</span> ({currentVerse}/{totalVerses}
-          )
+          Complete the financial terms for <span className="text-emerald-400">Round</span> 
         </h1>
       </div>
 
