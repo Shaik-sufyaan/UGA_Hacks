@@ -8,6 +8,36 @@ function generateClientId() {
     return Math.random().toString(36).substr(2, 9);
 }
 
+function createRoom() {
+    console.log('createRoom called');
+    username = document.getElementById('username').value;
+    jobTitle = document.getElementById('job-title').value;
+
+    if (!username) {
+        alert('Please enter a username');
+        return;
+    }
+
+    const clientId = generateClientId();
+    console.log('Generated clientId:', clientId);
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/${clientId}`;
+    console.log('Connecting to:', wsUrl);
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        console.log('Connected to server');
+        const message = {
+            type: 'create_room',
+            username: username
+        };
+        console.log('Sending message:', message);
+        ws.send(JSON.stringify(message));
+    };
+
+    setupWebSocketHandlers();
+}
+
 function joinGame() {
     username = document.getElementById('username').value;
     jobTitle = document.getElementById('job-title').value;
@@ -30,23 +60,31 @@ function joinGame() {
             room: roomCode,
             username: username
         }));
-        
-        document.getElementById('welcome-screen').classList.add('hidden');
-        document.getElementById('game-screen').classList.remove('hidden');
-        
-        requestQuestion();
     };
 
+    setupWebSocketHandlers();
+};
+
+function setupWebSocketHandlers() {
     ws.onmessage = handleMessage;
     ws.onclose = () => console.log('Disconnected from server');
 }
 
 function handleMessage(event) {
+    console.log('Received message:', event.data);
     const message = JSON.parse(event.data);
+    console.log('Parsed message:', message);
     
     switch (message.type) {
+        case 'room_created':
+            console.log('Handling room_created message');
+            handleRoomCreated(message);
+            break;
+
         case 'room_update':
+            console.log('Handling room_update message');
             updatePlayersList(message.players);
+            updateWaitingScreen(message.players);
             break;
             
         case 'question':
@@ -64,6 +102,14 @@ function handleMessage(event) {
         case 'player_disconnect':
             handlePlayerDisconnect(message);
             break;
+
+        case 'error':
+            console.error('Received error:', message.message);
+            alert(message.message);
+            break;
+
+        default:
+            console.log('Unknown message type:', message.type);
     }
 }
 
@@ -172,4 +218,46 @@ function requestQuestion() {
         job_title: jobTitle
     }));
     document.getElementById('next-question').classList.add('hidden');
+}
+
+function handleRoomCreated(message) {
+    console.log('handleRoomCreated called with:', message);
+    roomCode = message.room_code;
+    
+    // Hide welcome screen and show waiting screen
+    document.getElementById('welcome-screen').classList.add('hidden');
+    document.getElementById('waiting-screen').classList.remove('hidden');
+    
+    // Display room code
+    document.getElementById('waiting-room-code').textContent = roomCode;
+    console.log('Room code displayed:', roomCode);
+}
+
+function updateWaitingScreen(players) {
+    const waitingList = document.getElementById('waiting-players-list');
+    const startButton = document.getElementById('start-game-btn');
+    
+    // Update players list
+    waitingList.innerHTML = players
+        .map(player => `<li>${player.name}</li>`)
+        .join('');
+    
+    // Enable/disable start button based on player count
+    if (players.length >= 2) {
+        startButton.textContent = 'Start Game';
+        startButton.classList.remove('disabled');
+        startButton.disabled = false;
+        startButton.onclick = startGame;
+    } else {
+        startButton.textContent = 'Waiting for players...';
+        startButton.classList.add('disabled');
+        startButton.disabled = true;
+        startButton.onclick = null;
+    }
+}
+
+function startGame() {
+    document.getElementById('waiting-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+    requestQuestion();
 }

@@ -16,8 +16,30 @@
                     <option value="software_engineer">Software Engineer</option>
                     <option value="data_scientist">Data Scientist</option>
                 </select>
-                <input type="text" id="room-code" placeholder="Enter room code" required>
-                <button onclick="joinGame()">Join Game</button>
+                <div class="room-controls">
+                    <button onclick="createRoom()" class="create-room">Create New Room</button>
+                    <div class="join-room">
+                        <input type="text" id="room-code" placeholder="Enter room code" required>
+                        <button onclick="joinGame()">Join Room</button>
+                    </div>
+                </div>
+                <div id="room-info" class="hidden">
+                    <p>Your room code: <span id="current-room-code"></span></p>
+                    <p>Share this code with another player to start the game!</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="waiting-screen" class="screen hidden">
+            <h2>Waiting for Players</h2>
+            <div class="room-status">
+                <p>Your room code: <span id="waiting-room-code" class="code-display"></span></p>
+                <p>Share this code with another player to start the game!</p>
+                <div class="players-waiting">
+                    <h3>Players in Room:</h3>
+                    <ul id="waiting-players-list"></ul>
+                </div>
+                <button id="start-game-btn" class="start-game disabled" disabled>Waiting for players...</button>
             </div>
         </div>
 

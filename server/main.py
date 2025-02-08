@@ -5,6 +5,7 @@ from typing import Dict, List, Set, Optional
 import json
 import random
 import asyncio
+import string
 
 app = FastAPI()
 router = APIRouter()
@@ -22,6 +23,8 @@ class ConnectionManager:
         self.player_questions = {}
         self.player_names = {}
         self.room_players = {}
+        self.room_codes = set()
+        self.player_ready_states = {}  # Track ready states
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
@@ -31,12 +34,24 @@ class ConnectionManager:
 
     def disconnect(self, client_id: str):
         if client_id in self.active_connections:
-            # Remove from rooms
+            # Remove from rooms and clean up empty rooms
+            rooms_to_remove = []
             for room_id, players in self.room_players.items():
                 if client_id in players:
                     players.remove(client_id)
-                    # Notify other players about disconnection
-                    asyncio.create_task(self.broadcast_room_update(room_id))
+                    if client_id in self.player_ready_states:
+                        del self.player_ready_states[client_id]  # Clean up ready state
+                    # If room is empty, mark it for removal
+                    if not players:
+                        rooms_to_remove.append(room_id)
+                    else:
+                        # Notify other players about disconnection
+                        asyncio.create_task(self.broadcast_room_update(room_id))
+            
+            # Remove empty rooms and their codes
+            for room_id in rooms_to_remove:
+                del self.room_players[room_id]
+                self.room_codes.remove(room_id)
             
             # Clean up player data
             del self.active_connections[client_id]
@@ -53,23 +68,28 @@ class ConnectionManager:
 
     async def broadcast_room_update(self, room_id: str):
         if room_id in self.room_players:
-            # Get all active players in the room
-            active_players = [client_id for client_id in self.room_players[room_id] if client_id in self.active_connections]
-            
-            # Create player info list with proper error handling
-            player_info = []
-            for client_id in active_players:
-                try:
+            try:
+                # Get all active players in the room
+                active_players = [client_id for client_id in self.room_players[room_id] if client_id in self.active_connections]
+                
+                # Get the room creator (first player)
+                room_creator = list(self.room_players[room_id])[0] if self.room_players[room_id] else None
+                
+                # Create player info list
+                player_info = []
+                for client_id in active_players:
+                    is_creator = client_id == room_creator
+                    ready_state = self.player_ready_states.get(client_id, False)
+                    print(f"Player {client_id} - Creator: {is_creator}, Ready: {ready_state}")
                     player_info.append({
                         "id": client_id,
                         "name": self.player_names.get(client_id, "Unknown Player"),
-                        "score": self.player_scores.get(client_id, 0)
+                        "score": self.player_scores.get(client_id, 0),
+                        "ready": ready_state,
+                        "isCreator": is_creator
                     })
-                except Exception as e:
-                    print(f"Error creating player info for {client_id}: {str(e)}")
-            
-            # Send the update to all players in the room
-            try:
+                
+                # Send update to all players
                 message = json.dumps({
                     "type": "room_update",
                     "players": player_info
@@ -77,7 +97,7 @@ class ConnectionManager:
                 print(f"Broadcasting room update: {message}")
                 await self.broadcast(message, room_id)
             except Exception as e:
-                print(f"Error broadcasting room update: {str(e)}")
+                print(f"Error in broadcast_room_update: {str(e)}")
 
 manager = ConnectionManager()
 
@@ -119,7 +139,32 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             data = await websocket.receive_text()
             message = json.loads(data)
 
-            if message["type"] == "join_room":
+            if message["type"] == "create_room":
+                if "username" not in message:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Missing username in create room request"
+                    })
+                    continue
+                
+                # Generate a unique room code
+                while True:
+                    room_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+                    if room_code not in manager.room_codes:
+                        break
+                
+                manager.room_codes.add(room_code)
+                manager.room_players[room_code] = set([client_id])
+                manager.player_names[client_id] = message["username"]
+                
+                await websocket.send_json({
+                    "type": "room_created",
+                    "room_code": room_code
+                })
+                
+                await manager.broadcast_room_update(room_code)
+                
+            elif message["type"] == "join_room":
                 # Validate required fields for join_room
                 if "username" not in message or "room" not in message:
                     await websocket.send_json({
@@ -130,16 +175,111 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 
                 room_id = message["room"]
                 username = message["username"]
+                
+                # Check if room exists
+                if room_id not in manager.room_players:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Room does not exist"
+                    })
+                    continue
+                
+                # Check room capacity
+                if len(manager.room_players[room_id]) >= 2:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Room is full"
+                    })
+                    continue
 
                 # Store player info
                 manager.player_names[client_id] = username
-                    
-                if room_id not in manager.room_players:
-                    manager.room_players[room_id] = set()
-                    
                 manager.room_players[room_id].add(client_id)
                 
+                # Send room joined confirmation to the joining player
+                player_info = [
+                    {
+                        "id": player_id,
+                        "name": manager.player_names.get(player_id, "Unknown Player"),
+                        "score": manager.player_scores.get(player_id, 0)
+                    }
+                    for player_id in manager.room_players[room_id]
+                ]
+                
+                await websocket.send_json({
+                    "type": "room_joined",
+                    "room_code": room_id,
+                    "players": player_info
+                })
+                
+                # Broadcast room update to all players
                 await manager.broadcast_room_update(room_id)
+
+            elif message["type"] == "toggle_ready":
+                try:
+                    room_id = None
+                    # Find the room this player is in
+                    for rid, players in manager.room_players.items():
+                        if client_id in players:
+                            room_id = rid
+                            break
+                    
+                    if room_id:
+                        room_creator = list(manager.room_players[room_id])[0]
+                        # Only allow non-creator players to toggle ready state
+                        if client_id != room_creator:
+                            current_state = manager.player_ready_states.get(client_id, False)
+                            manager.player_ready_states[client_id] = not current_state
+                            print(f"Player {client_id} toggled ready state to: {manager.player_ready_states[client_id]}")
+                            
+                            # Send immediate confirmation to the player
+                            await websocket.send_json({
+                                "type": "ready_state_updated",
+                                "ready": manager.player_ready_states[client_id]
+                            })
+                            
+                            # Then broadcast to all players
+                            await manager.broadcast_room_update(room_id)
+                except Exception as e:
+                    print(f"Error in toggle_ready: {str(e)}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Failed to update ready state"
+                    })
+                    
+            elif message["type"] == "start_game":
+                try:
+                    room_id = None
+                    for rid, players in manager.room_players.items():
+                        if client_id in players:
+                            room_id = rid
+                            break
+                    
+                    if room_id:
+                        room_creator = list(manager.room_players[room_id])[0]
+                        if client_id == room_creator:
+                            # Check if all non-creator players are ready
+                            non_creator_players = [pid for pid in manager.room_players[room_id] if pid != room_creator]
+                            all_ready = all(manager.player_ready_states.get(pid, False) for pid in non_creator_players)
+                            
+                            if all_ready and len(manager.room_players[room_id]) > 1:
+                                print(f"Starting game in room {room_id}")
+                                # Start the game
+                                await manager.broadcast(json.dumps({
+                                    "type": "game_started",
+                                    "players": [manager.player_names[pid] for pid in manager.room_players[room_id]]
+                                }), room_id)
+                            else:
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "message": "Cannot start game: waiting for players to be ready"
+                                })
+                except Exception as e:
+                    print(f"Error in start_game: {str(e)}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Failed to start game"
+                    })
 
             elif message["type"] == "get_question":
                 job_title = message["job_title"]
