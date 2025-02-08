@@ -7,6 +7,7 @@ import { motion } from "framer-motion"
 import { FloatingPaper } from "@/components/floating-paper"
 import { SparklesCore } from "@/components/sparkles"
 import Navbar from "@/components/navbar"
+import { config } from '@/config/environment'
 
 type Player = {
   name: string
@@ -54,7 +55,8 @@ export default function GamePage() {
   }, [])
 
   const connectWebSocket = useCallback((cId: string) => {
-    const wsUrl = `ws://localhost:8000/ws/${cId}`
+    const wsUrl = `${config.wsUrl}/ws/${cId}`
+    console.log('Connecting to WebSocket:', wsUrl)
     const websocket = new WebSocket(wsUrl)
 
     websocket.onopen = () => {
