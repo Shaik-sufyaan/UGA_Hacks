@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from typing import Dict, List, Set, Optional
 import json
 import random
+import asyncio
 
 app = FastAPI()
 router = APIRouter()
@@ -19,6 +20,8 @@ class ConnectionManager:
         self.player_scores = {}
         self.player_levels = {}
         self.player_questions = {}
+        self.player_names = {}
+        self.room_players = {}
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
@@ -28,15 +31,53 @@ class ConnectionManager:
 
     def disconnect(self, client_id: str):
         if client_id in self.active_connections:
+            # Remove from rooms
+            for room_id, players in self.room_players.items():
+                if client_id in players:
+                    players.remove(client_id)
+                    # Notify other players about disconnection
+                    asyncio.create_task(self.broadcast_room_update(room_id))
+            
+            # Clean up player data
             del self.active_connections[client_id]
             del self.player_scores[client_id]
             del self.player_levels[client_id]
+            if client_id in self.player_names:
+                del self.player_names[client_id]
 
-    async def broadcast(self, message: str, room: str):
-        if room in self.game_rooms:
-            for client_id in self.game_rooms[room]:
+    async def broadcast(self, message: str, room_id: str):
+        if room_id in self.room_players:
+            for client_id in self.room_players[room_id]:
                 if client_id in self.active_connections:
                     await self.active_connections[client_id].send_text(message)
+
+    async def broadcast_room_update(self, room_id: str):
+        if room_id in self.room_players:
+            # Get all active players in the room
+            active_players = [client_id for client_id in self.room_players[room_id] if client_id in self.active_connections]
+            
+            # Create player info list with proper error handling
+            player_info = []
+            for client_id in active_players:
+                try:
+                    player_info.append({
+                        "id": client_id,
+                        "name": self.player_names.get(client_id, "Unknown Player"),
+                        "score": self.player_scores.get(client_id, 0)
+                    })
+                except Exception as e:
+                    print(f"Error creating player info for {client_id}: {str(e)}")
+            
+            # Send the update to all players in the room
+            try:
+                message = json.dumps({
+                    "type": "room_update",
+                    "players": player_info
+                })
+                print(f"Broadcasting room update: {message}")
+                await self.broadcast(message, room_id)
+            except Exception as e:
+                print(f"Error broadcasting room update: {str(e)}")
 
 manager = ConnectionManager()
 
@@ -77,16 +118,28 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-            
+
             if message["type"] == "join_room":
-                room = message["room"]
-                if room not in manager.game_rooms:
-                    manager.game_rooms[room] = set()
-                manager.game_rooms[room].add(client_id)
-                await manager.broadcast(json.dumps({
-                    "type": "room_update",
-                    "players": list(manager.game_rooms[room])
-                }), room)
+                # Validate required fields for join_room
+                if "username" not in message or "room" not in message:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Missing username or room in join request"
+                    })
+                    continue
+                
+                room_id = message["room"]
+                username = message["username"]
+
+                # Store player info
+                manager.player_names[client_id] = username
+                    
+                if room_id not in manager.room_players:
+                    manager.room_players[room_id] = set()
+                    
+                manager.room_players[room_id].add(client_id)
+                
+                await manager.broadcast_room_update(room_id)
 
             elif message["type"] == "get_question":
                 job_title = message["job_title"]
@@ -112,9 +165,33 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         manager.player_questions[client_id] = []
                         await websocket.send_json({
                             "type": "level_complete",
-                            "level": level,
-                            "score": manager.player_scores[client_id]
+                            "level": level
                         })
+            
+            elif message["type"] == "answer":
+                job_title = message["job_title"]
+                answer_idx = message["answer_idx"]
+                level = manager.player_levels[client_id]
+                
+                if client_id in manager.player_questions and manager.player_questions[client_id]:
+                    current_question = manager.player_questions[client_id][-1]
+                    is_correct = answer_idx == current_question["correct"]
+                    
+                    if is_correct:
+                        manager.player_scores[client_id] += 10
+                    
+                    await websocket.send_json({
+                        "type": "answer_result",
+                        "correct": is_correct,
+                        "correct_answer": current_question["correct"],
+                        "score": manager.player_scores[client_id]
+                    })
+                    
+                    # Broadcast updated scores to all players in the room
+                    for room_id, players in manager.room_players.items():
+                        if client_id in players:
+                            await manager.broadcast_room_update(room_id)
+                            break
 
             elif message["type"] == "answer":
                 job_title = message["job_title"]

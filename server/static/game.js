@@ -27,7 +27,8 @@ function joinGame() {
         console.log('Connected to server');
         ws.send(JSON.stringify({
             type: 'join_room',
-            room: roomCode
+            room: roomCode,
+            username: username
         }));
         
         document.getElementById('welcome-screen').classList.add('hidden');
@@ -67,10 +68,25 @@ function handleMessage(event) {
 }
 
 function updatePlayersList(players) {
+    console.log('Updating players list:', players);
     const playersList = document.getElementById('players');
-    playersList.innerHTML = players
-        .map(player => `<li>${player}</li>`)
+    if (!playersList) {
+        console.error('Players list element not found!');
+        return;
+    }
+    if (!Array.isArray(players)) {
+        console.error('Invalid players data received:', players);
+        return;
+    }
+    const playerElements = players
+        .map(player => {
+            const name = player.name || 'Unknown';
+            const score = typeof player.score === 'number' ? player.score : 0;
+            return `<li class="player-item">${name} - Score: ${score}</li>`;
+        })
         .join('');
+    playersList.innerHTML = playerElements;
+    console.log('Players list updated with:', playerElements);
 }
 
 function displayQuestion(message) {
@@ -96,18 +112,40 @@ function submitAnswer(answerIndex) {
     ws.send(JSON.stringify({
         type: 'answer',
         job_title: jobTitle,
-        question_idx: currentQuestionIndex,
         answer_idx: answerIndex
     }));
     
-    // Disable all options after answering
+    // Mark selected answer and disable all options
     const options = document.querySelectorAll('.option');
-    options.forEach(option => option.style.pointerEvents = 'none');
+    options.forEach((option, index) => {
+        option.style.pointerEvents = 'none';
+        if (index === answerIndex) {
+            option.classList.add('selected');
+        }
+    });
 }
 
 function handleAnswerResult(message) {
     const options = document.querySelectorAll('.option');
+    const nextQuestionBtn = document.getElementById('next-question');
+    
+    // Show correct answer
     options[message.correct_answer].classList.add('correct');
+    
+    // If user's answer was wrong, show it in red
+    if (!message.correct) {
+        options.forEach((option, index) => {
+            if (option.classList.contains('selected')) {
+                option.classList.add('incorrect');
+            }
+        });
+    }
+    
+    // Update score
+    document.getElementById('current-score').textContent = message.score;
+    
+    // Show next question button
+    nextQuestionBtn.classList.remove('hidden');
     
     if (!message.correct) {
         options[message.selected_answer].classList.add('incorrect');
