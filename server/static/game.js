@@ -19,7 +19,8 @@ function joinGame() {
     }
 
     const clientId = generateClientId();
-    const wsUrl = `ws://${window.location.hostname}:8000/ws/${clientId}`;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/${clientId}`;
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
