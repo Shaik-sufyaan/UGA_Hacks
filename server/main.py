@@ -1,10 +1,12 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, APIRouter
 from fastapi.staticfiles import StaticFiles
-from typing import Dict, List, Set
+from fastapi.responses import JSONResponse
+from typing import Dict, List, Set, Optional
 import json
 import random
 
 app = FastAPI()
+router = APIRouter()
 
 # Mount the static files directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -12,11 +14,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Store active connections and game states
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-        self.game_rooms: Dict[str, Set[str]] = {}
-        self.player_scores: Dict[str, int] = {}
-        self.player_levels: Dict[str, int] = {}
-        self.player_questions: Dict[str, List] = {}
+        self.active_connections = {}
+        self.game_rooms = {}
+        self.player_scores = {}
+        self.player_levels = {}
+        self.player_questions = {}
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
@@ -66,7 +68,7 @@ QUESTIONS = {
 
 @app.get("/")
 async def get():
-    return {"message": "Career Quiz Game Server"}
+    return JSONResponse(content={"message": "Career Quiz Game Server"})
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
