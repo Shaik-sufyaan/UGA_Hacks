@@ -1,14 +1,32 @@
-# Career Quiz Game
+# UGA Hacks
 
 A multiplayer quiz game where questions are based on job titles and difficulty increases with each level.
 
-## Features
+## Team Members
+Kamrul Tarafder, Shaik Sufyaan, and Mubashar Mian
 
-- Multiplayer support using WebSockets
-- Job-specific questions
-- Increasing difficulty levels
-- Real-time score tracking
-- Room-based gameplay
+## Purpose
+
+Our purpose is to create a multiplayer quiz game where players can compete against each other in real-time. The game will feature job-specific questions that increase in difficulty as the game progresses. 
+
+## Tools utilized
+
+- FastAPI for web development
+- Redis for storing game data
+- WebSockets for real-time communication
+- Next.js for user interface and user experience
+
+## Problem team ran into
+
+We ran into a few problems while developing the game. The main issue was with the WebSocket connections. None of us had ever worked with WebSocket before, so we struggled sometimes with proper client server communication. 
+
+## Frameworks & APIs
+
+- FastAPI for web development
+- Redis for storing game data
+- WebSockets for real-time communication
+- Next.js for user interface and user experience
+- Pinata for storing images
 
 ## Setup
 
