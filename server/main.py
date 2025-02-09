@@ -343,7 +343,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     continue
                 
                 # Check room capacity
-                if len(manager.room_players[room_id]) >= 2:
+                if len(manager.room_players[room_id]) >= 3:
                     await websocket.send_json({
                         "type": "error",
                         "message": "Room is full"
