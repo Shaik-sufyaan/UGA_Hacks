@@ -6,6 +6,16 @@ import json
 import random
 import asyncio
 import string
+import redis
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize Redis connection
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
+redis_client = redis.from_url(REDIS_URL)
 
 app = FastAPI()
 router = APIRouter()
@@ -26,12 +36,93 @@ class ConnectionManager:
         self.room_codes = set()
         self.player_ready_states = {}  # Track ready states
         self.active_games = {}
+        
+        # Load existing rooms from Redis
+        self._load_from_redis()
+        print("Initialized ConnectionManager with Redis")
+
+    def _load_from_redis(self):
+        """Load existing game state from Redis"""
+        try:
+            # Load room codes
+            room_codes = redis_client.smembers('room_codes')
+            self.room_codes = {code.decode('utf-8') for code in room_codes}
+            
+            # Load room players
+            for room_code in self.room_codes:
+                players = redis_client.smembers(f'room:{room_code}:players')
+                self.room_players[room_code] = {p.decode('utf-8') for p in players}
+                
+                # Load player data for this room
+                for player_id in self.room_players[room_code]:
+                    player_data = redis_client.hgetall(f'player:{player_id}')
+                    if player_data:
+                        self.player_names[player_id] = player_data.get(b'name', b'Unknown').decode('utf-8')
+                        self.player_scores[player_id] = int(player_data.get(b'score', b'0'))
+                        self.player_levels[player_id] = int(player_data.get(b'level', b'1'))
+                        self.player_ready_states[player_id] = player_data.get(b'ready', b'false').decode('utf-8') == 'true'
+            
+            print(f"Loaded {len(self.room_codes)} rooms from Redis")
+        except Exception as e:
+            print(f"Error loading from Redis: {e}")
+            # Reset state if loading fails
+            self.room_codes = set()
+            self.room_players = {}
+
+    def _save_room_to_redis(self, room_code: str):
+        """Save room data to Redis"""
+        try:
+            # Save room code
+            redis_client.sadd('room_codes', room_code)
+            
+            # Save room players
+            if room_code in self.room_players:
+                redis_client.delete(f'room:{room_code}:players')  # Clear existing players
+                if self.room_players[room_code]:
+                    redis_client.sadd(f'room:{room_code}:players', *self.room_players[room_code])
+        except Exception as e:
+            print(f"Error saving room to Redis: {e}")
+
+    def _save_player_to_redis(self, player_id: str):
+        """Save player data to Redis"""
+        try:
+            player_data = {
+                'name': self.player_names.get(player_id, 'Unknown'),
+                'score': str(self.player_scores.get(player_id, 0)),
+                'level': str(self.player_levels.get(player_id, 1)),
+                'ready': str(self.player_ready_states.get(player_id, False)).lower()
+            }
+            redis_client.hmset(f'player:{player_id}', player_data)
+        except Exception as e:
+            print(f"Error saving player to Redis: {e}")
+
+    def _delete_room_from_redis(self, room_code: str):
+        """Delete room data from Redis"""
+        try:
+            redis_client.srem('room_codes', room_code)
+            redis_client.delete(f'room:{room_code}:players')
+            
+            # Clean up player data if this was their only room
+            if room_code in self.room_players:
+                for player_id in self.room_players[room_code]:
+                    # Check if player is in any other rooms
+                    in_other_rooms = False
+                    for other_room, players in self.room_players.items():
+                        if other_room != room_code and player_id in players:
+                            in_other_rooms = True
+                            break
+                    
+                    if not in_other_rooms:
+                        redis_client.delete(f'player:{player_id}')
+        except Exception as e:
+            print(f"Error deleting room from Redis: {e}")
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
         self.active_connections[client_id] = websocket
         self.player_scores[client_id] = 0
         self.player_levels[client_id] = 1
+        self._save_player_to_redis(client_id)
 
     def disconnect(self, client_id: str):
         if client_id in self.active_connections:
@@ -41,25 +132,30 @@ class ConnectionManager:
                 if client_id in players:
                     players.remove(client_id)
                     if client_id in self.player_ready_states:
-                        del self.player_ready_states[client_id]  # Clean up ready state
+                        del self.player_ready_states[client_id]
                     # If room is empty, mark it for removal
                     if not players:
                         rooms_to_remove.append(room_id)
                     else:
+                        self._save_room_to_redis(room_id)
                         # Notify other players about disconnection
                         asyncio.create_task(self.broadcast_room_update(room_id))
             
-            # Remove empty rooms and their codes
+            # Remove empty rooms
             for room_id in rooms_to_remove:
                 del self.room_players[room_id]
                 self.room_codes.remove(room_id)
+                self._delete_room_from_redis(room_id)
             
             # Clean up player data
             del self.active_connections[client_id]
-            del self.player_scores[client_id]
-            del self.player_levels[client_id]
+            if client_id in self.player_scores:
+                del self.player_scores[client_id]
+            if client_id in self.player_levels:
+                del self.player_levels[client_id]
             if client_id in self.player_names:
                 del self.player_names[client_id]
+            redis_client.delete(f'player:{client_id}')
 
     async def broadcast(self, message: str, room_id: str):
         if room_id in self.room_players:
@@ -216,6 +312,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     "room_code": room_code
                 })
                 
+                manager._save_room_to_redis(room_code)
+                
                 await manager.broadcast_room_update(room_code)
                 
             elif message["type"] == "join_room":
@@ -266,6 +364,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     "players": player_info
                 })
                 
+                manager._save_room_to_redis(room_id)
+                
                 # Broadcast room update to all players
                 await manager.broadcast_room_update(room_id)
 
@@ -291,6 +391,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 "type": "ready_state_updated",
                                 "ready": manager.player_ready_states[client_id]
                             })
+                            
+                            manager._save_player_to_redis(client_id)
                             
                             # Then broadcast to all players
                             await manager.broadcast_room_update(room_id)
