@@ -8,6 +8,7 @@ import { FloatingPaper } from "@/components/floating-paper"
 import { SparklesCore } from "@/components/sparkles"
 import Navbar from "@/components/navbar"
 import { config } from '@/config/environment'
+import styles from './game.module.css'
 
 type Player = {
   name: string
@@ -256,7 +257,7 @@ export default function GamePage() {
                     <Button
                       key={index}
                       variant={selectedAnswer === index ? "secondary" : "outline"}
-                      className={`w-full text-left justify-start ${
+                      className={`${styles.optionButton} ${
                         selectedAnswer === index 
                           ? 'bg-primary/20 hover:bg-primary/30' 
                           : 'hover:bg-white/10'
@@ -264,7 +265,7 @@ export default function GamePage() {
                       onClick={() => submitAnswer(index)}
                       disabled={selectedAnswer !== null}
                     >
-                      {option}
+                      <span>{option}</span>
                     </Button>
                   ))}
                 </div>

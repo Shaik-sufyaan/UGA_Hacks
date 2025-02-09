@@ -255,10 +255,16 @@ manager = ConnectionManager()
 QUESTIONS = {
     "software_engineer": {
         1: [  # Level 1
-            {"question": "What does HTML stand for?", "options": ["Hyper Text Markup Language", "High Tech Modern Language", "Hybrid Text Making Language", "Home Tool Markup Language"], "correct": 0},
-            {"question": "Which data structure uses LIFO?", "options": ["Queue", "Stack", "Array", "Tree"], "correct": 1},
-            {"question": "What is the time complexity of binary search?", "options": ["O(n)", "O(n²)", "O(log n)", "O(1)"], "correct": 2},
-            {"question": "What is a variable?", "options": ["A container for data", "A programming language", "A computer", "A website"], "correct": 0}
+            {"question": "What does EBITDA stand for?", "options": ["Earnings Before Interest, Taxes, Depreciation, and Amortization", "Earnings Before Income, Taxes, Depreciation, and Amortization", "Earnings Before Interest, Taxes, Dividends, and Amortization", "Earnings Before Income, Taxes, Dividends, and Amortization"], "correct": 0},
+            {"question": "Which of the following is a current asset?", "options": ["Long-term investments", "Accounts receivable", "Property, plant, and equipment", "Goodwill"], "correct": 1},
+            {"question": "What does the current ratio measure?", "options": ["A company's long-term debt obligations", "A company's ability to meet short-term liabilities with short-term assets", "A company's profitability over time", "A company's return on investment"], "correct": 1},
+            {"question": "Which of the following is a key component of shareholders' equity?", "options": ["Accounts payable", "Retained earnings", "Short-term debt", "Accrued expenses"], "correct": 1},
+            {"question": "What does a net profit margin of 2.74% indicate about a company?", "options": ["The company is highly leveraged", "The company is efficient in converting sales into profit", "The company has high operating expenses", "The company is not profitable"], "correct": 1},
+            {"question": "Which of the following is a non-current liability?", "options": ["Accounts payable", "Short-term debt", "Long-term debt", "Accrued expenses"], "correct": 2},
+            {"question": "What is the formula for Return on Assets (ROA)?", "options": ["Net Income / Total Assets", "Net Income / Revenue", "Total Assets / Net Income", "Revenue / Total Assets"], "correct": 0},
+            {"question": "Which of the following is NOT part of a balance sheet?", "options": ["Assets", "Liabilities", "Revenue", "Shareholders' equity"], "correct": 2},
+            {"question": "What is the primary purpose of horizontal analysis?", "options": ["To compare financial data across different companies", "To compare financial data across different time periods", "To calculate profitability ratios", "To assess a company's liquidity"], "correct": 1},
+            {"question": "Which of the following is an example of an intangible asset?", "options": ["Cash", "Inventory", "Patents", "Accounts receivable"], "correct": 2}
         ],
         2: [  # Level 2
             {"question": "What is a closure in programming?", "options": ["A function with access to its outer scope", "A closed program", "A type of loop", "A database connection"], "correct": 0},
